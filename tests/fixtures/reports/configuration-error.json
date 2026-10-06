@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "suite_id": null,
+  "suite_hash": null,
+  "target_hash": null,
+  "runner_version": "0.1.0",
+  "os": "Windows synthetic fixture build",
+  "arch": "x86_64",
+  "started_at": "2026-10-05T08:00:00Z",
+  "duration_ms": 20,
+  "status": "CONFIG_ERROR",
+  "exit_code": 2,
+  "limits": {
+    "run_timeout_ms": 300000,
+    "max_cases": 100
+  },
+  "errors": [
+    {
+      "reason_code": "config_invalid",
+      "message": "Invalid suite"
+    }
+  ],
+  "cases": [],
+  "details_omitted": 0
+}

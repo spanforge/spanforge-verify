@@ -1,0 +1,61 @@
+name: Runner acceptance on laptops and containers
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_windows11:
+        description: Run on the registered cliverifyr-windows11 laptop runner
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  linux-container-foundation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build, test and prove lifecycle in a nonprivileged Linux container
+        run: docker build --platform linux/amd64 -t spanforge-verify-ci .
+      - name: Disk-full and denied-storage acceptance on disposable mounts
+        run: python3 tools/accept-container-storage.py --image spanforge-verify-ci
+  windows11:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_windows11
+    runs-on: [self-hosted, Windows, X64, cliverifyr-windows11]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust
+        shell: pwsh
+        run: rustup toolchain install 1.98.1 --profile minimal --component rustfmt --component clippy
+      - name: Repeat Windows laptop lifecycle gate
+        shell: pwsh
+        run: ./tools/run-prototype-gate.ps1 -Repeat 100
+      - name: Rust tests and lint checks
+        shell: pwsh
+        run: |
+          cargo test --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --all-targets --locked -- -D warnings
+      - name: Actual Windows console cancellation
+        shell: pwsh
+        run: ./tools/run-console-gate.ps1 -Repeat 100
+      - name: Windows release build and denied storage acceptance
+        shell: pwsh
+        run: |
+          cargo build --release --locked --bin spanforge-verify --bin cliverifyr
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/accept-windows-storage.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prototype-windows11-laptop
+          path: |
+            target/prototype-evidence
+            target/console-gate-*.json
+          if-no-files-found: warn

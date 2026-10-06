@@ -1,0 +1,18 @@
+# Schema version is independent of the application version.
+schema_version = 1
+suite_id = "smoke"
+# Resolve against this suite's directory; use a trusted native executable.
+program = 'bin/target.exe'
+
+[defaults]
+timeout_ms = 5000
+max_output_bytes = 1048576
+
+[[cases]]
+id = "help"
+args = ["--help"]
+[cases.expect]
+exit_code = 0
+[cases.stderr]
+mode = "text_equals"
+text = ""

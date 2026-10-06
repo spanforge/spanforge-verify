@@ -1,0 +1,8 @@
+SpanForge Verify
+Copyright (c) 2026 veerarag1973
+Licensed under the MIT License; see LICENSE.
+
+Third-party Rust dependencies retain their own copyrights and licenses.
+Release candidates include their license texts and a dependency inventory.
+Windows and Linux native targets must run binaries built for their own platform.
+Release candidate binaries are unsigned until a release signing certificate is supplied.

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "suite_id": "demo",
+  "suite_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "target_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "runner_version": "0.1.0",
+  "os": "Windows synthetic fixture build",
+  "arch": "x86_64",
+  "started_at": "2026-10-05T08:00:00Z",
+  "duration_ms": 20,
+  "status": "INFRA_ERROR",
+  "exit_code": 3,
+  "limits": {
+    "run_timeout_ms": 300000,
+    "max_cases": 100
+  },
+  "errors": [],
+  "cases": [
+    {
+      "case_id": "help",
+      "status": "INFRA_ERROR",
+      "reason_code": "spawn_failed",
+      "raw_exit_code": null,
+      "termination_reason": "infrastructure",
+      "duration_ms": 0,
+      "limits": {
+        "timeout_ms": 5000,
+        "max_output_bytes": 1048576
+      },
+      "stdin": {
+        "supplied_bytes": 0,
+        "written_bytes": 0
+      },
+      "stdout": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "stderr": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "assertions": [],
+      "workspace_deltas": [],
+      "checked": [],
+      "unchecked": [
+        "exit_code",
+        "stdin_delivery",
+        "lifecycle",
+        "workspace_changes",
+        "stdout",
+        "stderr"
+      ]
+    }
+  ],
+  "details_omitted": 0
+}

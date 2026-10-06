@@ -1,0 +1,26 @@
+schema_version = 1
+name = "automation-contract"
+
+[comparison]
+json_stdout = true
+# Explicitly declare generated JSON files here if applicable.
+# json_files = ["result.json"]
+
+[[rules]]
+id = "exit-convention"
+field = "exit_code"
+impact = "breaking"
+reason = "Automation depends on existing exit codes."
+
+[[rules]]
+id = "json-status"
+field = "stdout"
+path = "/status"
+impact = "breaking"
+reason = "Consumers depend on the status value."
+
+[[rules]]
+id = "diagnostic-wording"
+field = "stderr"
+impact = "allowed"
+reason = "Human-readable diagnostic wording may change; assertions still apply."

@@ -1,0 +1,47 @@
+# Offline fixture example for a native curl executable. Review the program path.
+schema_version = 1
+suite_id = 'http-failures'
+program = 'C:/Windows/System32/curl.exe'
+
+[[contracts]]
+id = 'service-unavailable'
+description = 'The client exposes a 503 response body'
+cases = ['unavailable']
+
+[[contracts]]
+id = 'redirect-following'
+description = 'The client follows a relative redirect'
+cases = ['redirect']
+
+[[cases]]
+id = 'unavailable'
+args = ['--silent', '--show-error', '--noproxy', '*', '{{http.url}}/health']
+expect = { exit_code = 0 }
+stdout = { mode = 'text_equals', text = 'temporarily unavailable' }
+stderr = { mode = 'text_equals', text = '' }
+[cases.http]
+url_env = 'SPANFORGE_VERIFY_HTTP_URL'
+[[cases.http.responses]]
+method = 'GET'
+path = '/health'
+status = 503
+body = 'temporarily unavailable'
+delay_ms = 50
+
+[[cases]]
+id = 'redirect'
+args = ['--silent', '--show-error', '--location', '--noproxy', '*', '{{http.url}}/start']
+expect = { exit_code = 0 }
+stdout = { mode = 'text_equals', text = 'ready' }
+[cases.http]
+url_env = 'SPANFORGE_VERIFY_HTTP_URL'
+[[cases.http.responses]]
+method = 'GET'
+path = '/start'
+status = 302
+location = '/ready'
+[[cases.http.responses]]
+method = 'GET'
+path = '/ready'
+status = 200
+body = 'ready'

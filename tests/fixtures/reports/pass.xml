@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites>
+  <testsuite name="demo" tests="1" failures="0" errors="0" skipped="0" time="0.020">
+    <properties>
+      <property name="run_id" value="00000000-0000-4000-8000-000000000001" />
+      <property name="runner_exit_code" value="0" />
+    </properties>
+    <testcase classname="demo" name="help" time="0.012" />
+  </testsuite>
+</testsuites>

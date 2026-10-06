@@ -1,0 +1,56 @@
+schema_version = 1
+suite_id = 'workflow-example'
+# Demonstration fixture. Replace this executable and its arguments with your CLI.
+# Linux: remove .exe from this native executable path.
+program = '../target/release/spanforge-verify-fixture.exe'
+
+[[contracts]]
+id = 'shared-file-workflow'
+description = 'A generated file can be consumed by a later command'
+cases = ['workflow']
+
+[[contracts]]
+id = 'input-encoding'
+description = 'Text input is preserved across encodings and repeated attempts'
+cases = ['echo']
+
+[[cases]]
+id = 'workflow'
+args = []
+expect = { exit_code = 0 }
+repeat = 2
+
+[[cases.steps]]
+id = 'create'
+args = ['write', 'shared.txt', 'hello']
+expect = { exit_code = 0 }
+files = [{ path = 'shared.txt', kind = 'file', mode = 'exact_file', expected_file = 'workflow-expected.txt' }]
+
+[[cases.steps]]
+id = 'extract'
+args = ['stdin']
+stdin_text = '{"path":"shared.txt"}'
+expect = { exit_code = 0 }
+extract = { path = { pointer = '/path', kind = 'string' } }
+
+[[cases.steps]]
+id = 'consume'
+args = ['read', '{{steps.path}}']
+expect = { exit_code = 0 }
+stdout = { mode = 'exact_file', expected_file = 'workflow-expected.txt' }
+
+[[cases]]
+id = 'echo'
+args = ['stdin']
+stdin_text = '{{matrix.text}}'
+expect = { exit_code = 0 }
+stdout = { mode = 'text_equals', text = '{{matrix.text}}' }
+repeat = 3
+
+[[cases.matrix]]
+id = 'ascii'
+values = { text = 'hello' }
+
+[[cases.matrix]]
+id = 'unicode'
+values = { text = 'தமிழ்' }

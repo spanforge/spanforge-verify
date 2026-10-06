@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites>
+  <testsuite name="demo" tests="4" failures="1" errors="1" skipped="1" time="0.050">
+    <properties>
+      <property name="run_id" value="00000000-0000-4000-8000-000000000001" />
+      <property name="runner_exit_code" value="3" />
+    </properties>
+    <testcase classname="demo" name="help" time="0.012" />
+    <testcase classname="demo" name="bad-exit" time="0.012">
+      <failure type="assertion_mismatch" message="assertion_mismatch" />
+    </testcase>
+    <testcase classname="demo" name="job-failed" time="0.000">
+      <error type="job_assignment_failed" message="job_assignment_failed" />
+    </testcase>
+    <testcase classname="demo" name="not-started" time="0.000">
+      <skipped type="not_run_after_abort" message="not_run_after_abort" />
+    </testcase>
+  </testsuite>
+</testsuites>

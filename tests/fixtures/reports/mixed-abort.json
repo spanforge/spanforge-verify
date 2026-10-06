@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "suite_id": "demo",
+  "suite_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "target_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "runner_version": "0.1.0",
+  "os": "Windows synthetic fixture build",
+  "arch": "x86_64",
+  "started_at": "2026-10-05T08:00:00Z",
+  "duration_ms": 50,
+  "status": "INFRA_ERROR",
+  "exit_code": 3,
+  "limits": {
+    "run_timeout_ms": 300000,
+    "max_cases": 100
+  },
+  "errors": [],
+  "cases": [
+    {
+      "case_id": "help",
+      "status": "PASS",
+      "reason_code": null,
+      "raw_exit_code": 0,
+      "termination_reason": null,
+      "duration_ms": 12,
+      "limits": {
+        "timeout_ms": 5000,
+        "max_output_bytes": 1048576
+      },
+      "stdin": {
+        "supplied_bytes": 0,
+        "written_bytes": 0
+      },
+      "stdout": {
+        "captured_bytes": 4,
+        "truncated": false
+      },
+      "stderr": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "assertions": [
+        {
+          "check_id": "exit_code",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": "0",
+          "observed_summary": "0"
+        },
+        {
+          "check_id": "stdin_delivery",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        },
+        {
+          "check_id": "lifecycle",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        },
+        {
+          "check_id": "workspace_changes",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        }
+      ],
+      "workspace_deltas": [],
+      "checked": [
+        "exit_code",
+        "stdin_delivery",
+        "lifecycle",
+        "workspace_changes"
+      ],
+      "unchecked": [
+        "stdout",
+        "stderr"
+      ]
+    },
+    {
+      "case_id": "bad-exit",
+      "status": "FAIL",
+      "reason_code": "assertion_mismatch",
+      "raw_exit_code": 2,
+      "termination_reason": null,
+      "duration_ms": 12,
+      "limits": {
+        "timeout_ms": 5000,
+        "max_output_bytes": 1048576
+      },
+      "stdin": {
+        "supplied_bytes": 0,
+        "written_bytes": 0
+      },
+      "stdout": {
+        "captured_bytes": 4,
+        "truncated": false
+      },
+      "stderr": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "assertions": [
+        {
+          "check_id": "exit_code",
+          "status": "FAIL",
+          "reason_code": "assertion_mismatch",
+          "expected_summary": "0",
+          "observed_summary": "2"
+        },
+        {
+          "check_id": "stdin_delivery",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        },
+        {
+          "check_id": "lifecycle",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        },
+        {
+          "check_id": "workspace_changes",
+          "status": "PASS",
+          "reason_code": null,
+          "expected_summary": null,
+          "observed_summary": null
+        }
+      ],
+      "workspace_deltas": [],
+      "checked": [
+        "exit_code",
+        "stdin_delivery",
+        "lifecycle",
+        "workspace_changes"
+      ],
+      "unchecked": [
+        "stdout",
+        "stderr"
+      ]
+    },
+    {
+      "case_id": "job-failed",
+      "status": "INFRA_ERROR",
+      "reason_code": "job_assignment_failed",
+      "raw_exit_code": null,
+      "termination_reason": "infrastructure",
+      "duration_ms": 0,
+      "limits": {
+        "timeout_ms": 5000,
+        "max_output_bytes": 1048576
+      },
+      "stdin": {
+        "supplied_bytes": 0,
+        "written_bytes": 0
+      },
+      "stdout": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "stderr": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "assertions": [],
+      "workspace_deltas": [],
+      "checked": [],
+      "unchecked": [
+        "exit_code",
+        "stdin_delivery",
+        "lifecycle",
+        "workspace_changes",
+        "stdout",
+        "stderr"
+      ]
+    },
+    {
+      "case_id": "not-started",
+      "status": "INCONCLUSIVE",
+      "reason_code": "not_run_after_abort",
+      "raw_exit_code": null,
+      "termination_reason": null,
+      "duration_ms": 0,
+      "limits": {
+        "timeout_ms": 5000,
+        "max_output_bytes": 1048576
+      },
+      "stdin": {
+        "supplied_bytes": 0,
+        "written_bytes": 0
+      },
+      "stdout": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "stderr": {
+        "captured_bytes": 0,
+        "truncated": false
+      },
+      "assertions": [],
+      "workspace_deltas": [],
+      "checked": [],
+      "unchecked": [
+        "exit_code",
+        "stdin_delivery",
+        "lifecycle",
+        "workspace_changes",
+        "stdout",
+        "stderr"
+      ]
+    }
+  ],
+  "details_omitted": 0
+}
