@@ -152,6 +152,8 @@ pub fn execute_plan_started(
                         deadline,
                         cancelled.clone(),
                         CaseEvaluation {
+                            run_id: &result.run_id,
+                            attempt_id: &case.id,
                             output: &mut output,
                             observer: &mut observer,
                             baseline: None,
@@ -312,6 +314,8 @@ fn empty(case: &Case, timeout_ms: u64, max_output_bytes: u64) -> CaseResult {
         .chain(case.files.iter().map(|f| format!("file:{}", f.path)))
         .chain(case.http.as_ref().map(|_| "http_requests".to_owned()))
         .chain((!case.extract.is_empty()).then(|| "extraction".to_owned()))
+        .chain(case.verify.iter().map(|id| format!("verifier:{id}")))
+        .chain(case.agent.as_ref().map(|_| "agent_protocol".to_owned()))
         .collect(),
     }
 }
@@ -329,6 +333,8 @@ use crate::process_linux as process;
 use crate::process_windows as process;
 
 struct CaseEvaluation<'a, 'b> {
+    run_id: &'a str,
+    attempt_id: &'a str,
     output: &'a mut CaseResult,
     observer: &'a mut Option<&'b mut dyn CaseObserver>,
     baseline: Option<&'a workspace::Snapshot>,
@@ -385,6 +391,10 @@ fn run_case(
         .as_ref()
         .map(|p| workspace.path().join(p))
         .unwrap_or_else(|| workspace.path().into());
+    let agent_stdin = case
+        .agent
+        .as_ref()
+        .map(|task| crate::agent::request(task, evaluation.run_id, evaluation.attempt_id));
     let observation = process::run(&process::Request {
         executable: plan.executable(),
         #[cfg(target_os = "linux")]
@@ -392,16 +402,17 @@ fn run_case(
         args: &args,
         cwd: &cwd,
         env: &env,
-        stdin: case
-            .stdin_text
-            .as_ref()
-            .map(|s| s.as_bytes())
-            .or_else(|| case.stdin_file.as_ref().and_then(|p| inputs.expected(p)))
-            .unwrap_or_else(|| inputs.stdin()),
+        stdin: agent_stdin.as_deref().unwrap_or_else(|| {
+            case.stdin_text
+                .as_ref()
+                .map(|s| s.as_bytes())
+                .or_else(|| case.stdin_file.as_ref().and_then(|p| inputs.expected(p)))
+                .unwrap_or_else(|| inputs.stdin())
+        }),
         max_output_bytes: output.limits.max_output_bytes as usize,
         timeout: Duration::from_millis(output.limits.timeout_ms),
         run_deadline: deadline,
-        cancelled,
+        cancelled: cancelled.clone(),
     })
     .map_err(|e| (e.reason_code.into(), e.to_string()))?;
     #[cfg(target_os = "linux")]
@@ -460,6 +471,22 @@ fn run_case(
         }
         if !case.extract.is_empty() {
             output.unchecked.push("extraction".into());
+        }
+        output
+            .unchecked
+            .extend(case.verify.iter().map(|id| format!("verifier:{id}")));
+        if case.agent.is_some() {
+            output.unchecked.push("agent_protocol".into());
+        }
+        if let Some(task) = &case.agent {
+            output.assertions.extend(crate::agent::evaluate(
+                task,
+                &observation.stdout.bytes,
+                evaluation.run_id,
+                evaluation.attempt_id,
+                false,
+                &[],
+            ));
         }
         return Ok(());
     }
@@ -621,18 +648,80 @@ fn run_case(
             "assertion_mismatch",
         ));
     }
-    output.status = match output.termination_reason {
-        Some(TerminationReason::Cancelled | TerminationReason::RunDeadline) => Status::Inconclusive,
-        Some(TerminationReason::Infrastructure) => Status::InfraError,
-        _ => {
-            if output
-                .assertions
-                .iter()
-                .any(|a| a.status == AssertionStatus::Fail)
-            {
-                Status::Fail
-            } else {
-                Status::Pass
+    let mut verifier_stopped = false;
+    for id in &case.verify {
+        let assertion = if verifier_stopped {
+            unevaluated(&format!("verifier:{id}"), "not_run_after_verifier_error")
+        } else if complete {
+            let (mut assertion, health) = plan.verifier(id).evaluate(
+                id,
+                workspace.path(),
+                evaluation.run_id,
+                deadline,
+                cancelled.clone(),
+            )?;
+            output.unchecked.extend(
+                health
+                    .iter()
+                    .filter(|a| a.status == AssertionStatus::NotEvaluated)
+                    .map(|a| a.check_id.clone()),
+            );
+            output.assertions.extend(health);
+            let verified_state = workspace::snapshot(workspace.path(), deadline)
+                .map_err(|e| (e.reason_code.into(), e.to_string()))?;
+            if verified_state != after {
+                assertion.status = AssertionStatus::NotEvaluated;
+                assertion.reason_code = Some("evaluator_error".into());
+                assertion.observed_summary = Some("Verifier changed the task workspace".into());
+            }
+            assertion
+        } else {
+            unevaluated(&format!("verifier:{id}"), "process_terminated")
+        };
+        verifier_stopped |= complete && assertion.status == AssertionStatus::NotEvaluated;
+        output.assertions.push(assertion);
+    }
+    if let Some(task) = &case.agent {
+        let checks = crate::agent::evaluate(
+            task,
+            &observation.stdout.bytes,
+            evaluation.run_id,
+            evaluation.attempt_id,
+            complete && !observation.stdout.truncated,
+            &output.assertions,
+        );
+        for check in checks
+            .iter()
+            .filter(|a| a.status == AssertionStatus::NotEvaluated)
+        {
+            if !output.unchecked.contains(&check.check_id) {
+                output.unchecked.push(check.check_id.clone());
+            }
+        }
+        output.assertions.extend(checks);
+    }
+    // Missing mandatory outcome evidence must never become a passing task.
+    let verifier_unknown = output.assertions.iter().find(|a| {
+        a.check_id.starts_with("verifier:") && a.status == AssertionStatus::NotEvaluated && complete
+    });
+    output.status = if verifier_unknown.is_some() {
+        Status::Inconclusive
+    } else {
+        match output.termination_reason {
+            Some(TerminationReason::Cancelled | TerminationReason::RunDeadline) => {
+                Status::Inconclusive
+            }
+            Some(TerminationReason::Infrastructure) => Status::InfraError,
+            _ => {
+                if output
+                    .assertions
+                    .iter()
+                    .any(|a| a.status == AssertionStatus::Fail)
+                {
+                    Status::Fail
+                } else {
+                    Status::Pass
+                }
             }
         }
     };
@@ -640,6 +729,7 @@ fn run_case(
         .termination_reason
         .as_ref()
         .map(termination_code)
+        .or_else(|| verifier_unknown.and_then(|a| a.reason_code.clone()))
         .or_else(|| {
             output
                 .assertions
@@ -748,6 +838,7 @@ fn run_scenario(
             let mut step_observer: Option<&mut dyn CaseObserver> = Some(&mut capture);
             let evaluated = match crate::workflow::bind(step, &bindings) {
                 Ok(mut bound) => {
+                    let attempt_id = format!("{}/{}", case.id, step.id);
                     if bound.cwd.is_none() {
                         bound.cwd = case.cwd.clone();
                     }
@@ -759,6 +850,8 @@ fn run_scenario(
                         deadline,
                         cancelled.clone(),
                         CaseEvaluation {
+                            run_id: evaluation.run_id,
+                            attempt_id: &attempt_id,
                             output: &mut result,
                             observer: &mut step_observer,
                             baseline: Some(&baseline),

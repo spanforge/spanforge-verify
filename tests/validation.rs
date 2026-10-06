@@ -28,6 +28,79 @@ fn valid_suite_and_exact_filter() {
     assert!(validate(&path, Some("one")).is_ok());
     assert!(validate(&path, Some("ONE")).is_err());
 }
+
+#[test]
+fn explicit_targets_lower_to_legacy_execution() {
+    for (target, expected) in [
+        (
+            "schema_version=1\nkind='native'\nexecutable='target.exe'",
+            vec![],
+        ),
+        (
+            "schema_version=1\nkind='interpreter'\nexecutable='target.exe'\nargv=['script.py','--literal']",
+            vec!["script.py", "--literal"],
+        ),
+    ] {
+        let (_dir, path) = suite("");
+        let text = fs::read_to_string(&path)
+            .unwrap()
+            .replace("program='target.exe'", &format!("[target]\n{target}"));
+        fs::write(&path, text).unwrap();
+        let validated = validate(&path, None).unwrap();
+        assert_eq!(validated.program, "target.exe");
+        assert_eq!(validated.cases[0].args, expected);
+        assert!(validated.target.is_none());
+    }
+}
+
+#[test]
+fn invalid_targets_fail_before_execution() {
+    for target in [
+        "schema_version=2\nkind='native'\nexecutable='target.exe'",
+        "schema_version=1\nkind='http'\nexecutable='target.exe'",
+        "schema_version=1\nkind='interpreter'\nexecutable='target.exe'\nargv=[]",
+        "schema_version=1\nkind='native'\nexecutable='target.exe'\ntypo=true",
+        "schema_version=1\nkind='native'\nexecutable='target.exe'\nargv=['extra']",
+    ] {
+        let (_dir, path) = suite("");
+        let text = fs::read_to_string(&path)
+            .unwrap()
+            .replace("program='target.exe'", &format!("[target]\n{target}"));
+        fs::write(&path, text).unwrap();
+        assert!(validate(&path, None).is_err(), "{target}");
+    }
+    let (_dir, path) = suite("");
+    let text = fs::read_to_string(&path).unwrap();
+    fs::write(
+        &path,
+        format!("{text}\n[target]\nschema_version=1\nkind='native'\nexecutable='target.exe'\n"),
+    )
+    .unwrap();
+    assert!(validate(&path, None).is_err());
+}
+
+#[test]
+fn interpreter_prefix_survives_matrix_overrides_and_scenario_steps() {
+    for extra in [
+        "[[cases.matrix]]\nid='row'\nargs=['row-arg']",
+        "[[cases.steps]]\nid='step'\nargs=['step-arg']\n[cases.steps.expect]\nexit_code=0",
+    ] {
+        let (_dir, path) = suite("");
+        let text = fs::read_to_string(&path).unwrap().replace(
+            "program='target.exe'",
+            "[target]\nschema_version=1\nkind='interpreter'\nexecutable='target.exe'\nargv=['script.py']",
+        );
+        fs::write(&path, format!("{text}\n{extra}\n")).unwrap();
+        let validated = validate(&path, None).unwrap();
+        let case = &validated.cases[0];
+        if case.steps.is_empty() {
+            assert_eq!(case.args, ["script.py", "row-arg"]);
+        } else {
+            assert!(case.args.is_empty());
+            assert_eq!(case.steps[0].args, ["script.py", "step-arg"]);
+        }
+    }
+}
 #[test]
 fn unknown_keys_and_conflicting_stdin_fail() {
     for invalid in [

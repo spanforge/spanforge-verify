@@ -77,6 +77,214 @@ evidence document. No hosted CI account is required.
 Run trusted suites and binaries only. Workspaces and lifecycle management do not
 provide a security sandbox. The implementation plan is excluded from Git.
 
+## Explicit process targets
+
+Suites may replace `program` with a versioned process target:
+
+```toml
+[target]
+schema_version = 1
+kind = "native"
+executable = "D:/tools/agent.exe"
+```
+
+For an explicitly selected interpreter, use `kind = "interpreter"` and add
+`argv = ["D:/agents/agent.py"]`, with `executable` pointing to the native
+interpreter binary. These arguments precede each case's arguments, including
+matrix overrides and scenario steps. Arguments are passed directly without a
+shell. Script paths should be absolute because execution uses a private workspace.
+Scripts and interpreter dependencies are not captured or pinned by this adapter;
+review and supply them separately for replay. This is cooperative process execution,
+with the existing time/output/environment limits, not agent containment.
+
+Declare either `program` or `target`. Legacy `program` suites remain supported.
+Target schema versions other than 1, unknown fields and unsupported adapter kinds
+are configuration errors. Validation lowers process targets into the existing
+native execution plan; bundles retain that plan and native executable identity.
+Container, HTTP/model adapters and live event dispatch/enforcement remain planned.
+
+## Agent tasks and independent outcome checks
+
+An optional `[cases.agent]` declares `schema_version = 1`, task `input`, string
+`context` fields and optional `claims` mapping claim IDs to case verifier IDs.
+The runner supplies one JSON stdin document with `schema_version`, `run_id`,
+`attempt_id`, `task` and `capabilities`. Current capabilities explicitly advertise
+no tool gateway. Single-JSON mode advertises no events. Agents return one strict JSON stdout document:
+
+```json
+{"schema_version":1,"run_id":"<echo request>","attempt_id":"<echo request>","response":"Task complete","claims":["answer_written"]}
+```
+
+Unknown fields, duplicate keys, invalid identities and malformed responses fail
+`agent_protocol`. Task input is capped at 64 KiB, context at 32 entries of 4 KiB
+and claims at 32 IDs. Stdout/stderr retain the case output bounds and lifecycle
+limits. Agent tasks cannot also declare stdin or extraction. Matrices, repeats
+and scenario steps work; scenarios declare agent tasks and checks on their steps.
+Task input/context are literal; matrix/step interpolation inside them is not supplied.
+
+Declare reviewed checks with `[[verifiers]]`, a stable `id`, `schema_version = 1`,
+`executable = { path = "...", sha256 = "..." }`, fixed `args`, `timeout_ms` and
+`max_output_bytes`. Optional named `dependencies` have the same pinned-file format.
+Use a whole argv entry such as `"{{dependency.check}}"` to pass its resolved path.
+Each case selects mandatory checks using `verify = ["check-id"]`. All declarations,
+references and pins are validated before case selection or any target launch.
+At most 32 verifiers, 32 dependencies per verifier and 100 MiB of distinct pinned
+files are supported. Runtime bounds are 1..60,000 ms and 1..1 MiB per output stream.
+
+Checks run after the target process tree finishes, in a separate temporary working
+directory with an empty PATH and private profile values. They receive JSON stdin
+with `schema_version = 1` and the absolute task `workspace` path. Exit 0 must carry
+one strict JSON response:
+
+```json
+{"schema_version":1,"status":"PASS","summary":"Checked persisted answer"}
+```
+
+`status` also accepts `FAIL` and `INCONCLUSIVE`. Summary length is capped at 4 KiB.
+Explicit FAIL produces `verified_outcome_failure`. Crashes, timeouts, truncated or
+malformed responses, changed pins and persistent task-workspace mutations leave
+the mandatory check unevaluated and the task INCONCLUSIVE. Later checks stop after
+an evaluator error. Cancellation, run deadlines and process infrastructure errors
+retain their runner distinctions. Existing agent assertions and observations remain
+in JSON/JUnit evidence, with verifier identity and masked summaries.
+
+Structured claims inherit the mapped verifier finding: a failed check produces
+`false_completion_claim`. Unmapped claims stay visibly unverified, while prose is
+never treated as evidence of completion. Without reviewed qualification controls,
+evaluator qualification remains `not_evaluated`; hash pinning does not establish a
+sound oracle. This profile is
+for trusted cooperative targets. Windows holds pinned files against writes; Linux
+rechecks identities/hashes, with runtime acceptance still pending. Neither profile
+provides containment or protects undeclared interpreter libraries/dependencies.
+Verifier dependency bundling is rejected explicitly; JSON/JUnit evidence is available.
+Raw stream comparisons/repeatability include the protocol run/attempt identities;
+they are not semantic agent comparisons.
+
+Try the standard-library Python fixtures (Python 3.10+):
+
+```powershell
+python examples/agents/create_suite.py --out target/python-agent.toml
+cargo build --locked --bin spanforge-verify
+./target/debug/spanforge-verify.exe qualify --file target/python-agent.toml
+./target/debug/spanforge-verify.exe run --file target/python-agent.toml --json target/python-agent.json --junit target/python-agent.xml
+```
+
+The generator pins the installed interpreter executable and verifier script and
+refuses to overwrite the suite. Review the generated declarations before execution.
+The example has two passing alternatives and an intentionally false completion
+that fails, so the full suite exits 1. Use `--case good` for a passing run.
+Python's standard library and native runtime dependencies are not pinned here.
+See [development evidence](docs/agent-verification-development.md) for tested cases.
+
+## Qualify reviewed evaluators
+
+Add a versioned qualification set to each verifier before trusting its task findings:
+
+```toml
+[verifiers.qualification]
+schema_version = 1
+repeat = 2
+[[verifiers.qualification.controls]]
+id = "known-good"
+kind = "reference"
+files = { "answer.txt" = "42\n" }
+[[verifiers.qualification.controls]]
+id = "no-op"
+kind = "no_op"
+[[verifiers.qualification.controls]]
+id = "seeded-defect"
+kind = "defect"
+files = { "answer.txt" = "41\n" }
+[[verifiers.qualification.controls]]
+id = "valid-alternative"
+kind = "alternate"
+files = { "answer.txt" = "forty-two\n" }
+```
+
+Place `require_qualification = true` in the verifier declaration to disallow task
+grading when no qualification set exists. A supplied set always gates that verifier's
+findings. Existing declarations without a set or requirement retain their prior
+behavior and explicit `not_evaluated` label.
+
+Every set requires reference, no-op, defect and alternate controls. Their expected
+verdicts are PASS, FAIL, FAIL and PASS respectively. Inline UTF-8 files form immutable
+reviewed control workspaces; each invocation starts fresh and must leave its control
+state unchanged. Sets allow 4..32 controls, 2..5 verdict repeats, at most 64 files per
+control and 1 MiB of total content. Unsafe or conflicting paths, duplicate IDs,
+missing roles and identical inputs with contradictory expected verdicts fail validation.
+Reviewers must supply meaningful controls; labels alone do not establish correctness.
+
+`qualify --file suite.toml [--verifier id]` validates the entire suite and invokes
+only the selected verifiers on their controls. It emits JSON with verifier executable
+and declaration hashes, limits, repeats and every control receipt. Exit 0 means
+all reviewed controls passed, 1 means an evaluator rejected a valid control or accepted
+a negative one, 4 means evidence is missing/inconclusive, 2 means invalid configuration
+and 3 means an infrastructure error. The evaluated target is never launched by this
+command; its declarations and immutable inputs still need to validate.
+
+During `run`, controls execute before the first grading invocation, after the target
+has finished. Qualification is reused only within that run. Each case/step retains
+the receipts, and subsequent runs repeat qualification. An unhealthy evaluator yields
+`evaluator_unqualified`, an unevaluated task finding and an INCONCLUSIVE case; it cannot
+create a false-completion accusation from an unavailable oracle. Declared control
+mismatches remain visible, including `qualification_defect_escaped` for an always-pass
+evaluator. Crashes, interrupted checks and persistent control mutations stop dependent
+checks with missing evidence. All control execution shares the suite run deadline
+and the verifier's subprocess limits; reports use existing secret masking.
+
+The Python generator now includes a qualification set. Generate an intentionally
+broken oracle with `--oracle always-pass --mode good`: `qualify` exits 1, and the task
+run exits 4 despite the agent writing a correct answer. Qualification covers only
+the reviewed controls and repeated verdicts. Automated mutation generation,
+statistical accuracy calibration and containment remain planned.
+
+## JSONL agent events
+
+Set `protocol = "jsonl"` under `[cases.agent]` to emit newline-delimited records.
+The default remains `"json"`. Optional `max_events` defaults to 256 and permits
+2..1024 records, including the mandatory start and final records. The request adds
+`protocol = "jsonl"`, advertises `events = true`, and supplies `event_limits` with
+the selected count, an 80 KiB record cap and `source = "agent_self_reported"`.
+
+Each stdout line must be strict JSON ending in LF or CRLF. Common fields are
+`schema_version = 1`, matching `run_id`/`attempt_id`, contiguous `sequence` starting
+at zero, a unique `event_id`, and `kind`. Record shapes are:
+
+| Kind | Payload |
+| --- | --- |
+| `started` | First record; optional `summary`. |
+| `tool` / `model` | Required `name`; optional `summary`. |
+| `final` | Last record; required `response`; optional `claims` list. |
+
+Names allow up to 128 UTF-8 bytes, excluding NUL/CR/LF; summaries allow 4 KiB.
+Event IDs use the existing 64-character ASCII identifier rules. Final responses and
+claims retain the JSON protocol's 64 KiB/32-claim limits. Unknown fields, duplicate
+keys/IDs, mismatched identities, sequence gaps, invalid payloads, extra records after
+final and missing/unframed final records fail `agent_protocol`. Count and record limits
+apply alongside existing captured-stream byte limits and process deadlines.
+
+Validated envelopes produce masked `event:<sequence>:<id>` assertion receipts in
+JSON/JUnit evidence. A PASS on such a receipt means the envelope is valid; it does
+not verify a tool action, model invocation or complete observation. Source provenance
+is fixed by the adapter. A producer cannot promote an event to a gateway observation
+by adding a `source` field. Final claims still require independent mapped verifiers.
+
+Timeout, cancellation or truncated capture retains only the validated, fully framed
+prefix, keeps protocol completion unevaluated, and never infers a missing final event.
+Original process status and verifier skipping remain visible. Raw prompts, arguments
+and tool results are not added as event attachments by this format.
+
+This increment supports the streaming wire format with bounded process capture;
+records are validated after process execution. Live incremental callbacks, early
+event-limit cancellation, capability negotiation, tool gateways, full trace manifests
+and SDK telemetry adapters remain pending. Existing raw comparisons include protocol
+identities; JSON stdout comparison does not parse a multi-record JSONL stream.
+
+Generate the controlled Python example with
+`python examples/agents/create_suite.py --protocol jsonl --out target/jsonl-agent.toml`,
+then use the usual `qualify` and `run` commands. This remains a cooperative fixture,
+with the same qualification, dependency and containment limits described above.
+
 ## Comparing recorded outcomes
 
 ```text

@@ -40,6 +40,12 @@ fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 pub fn preflight_destination(plan: &inputs::RunPlan, out: &Path) -> Result<(), String> {
+    if !plan.suite().verifiers.is_empty() {
+        return Err(
+            "Verifier dependency bundling is not supported; run with JSON/JUnit evidence instead"
+                .into(),
+        );
+    }
     let parent = out
         .parent()
         .filter(|p| !p.as_os_str().is_empty())

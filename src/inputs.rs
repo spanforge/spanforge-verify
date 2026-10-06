@@ -266,6 +266,7 @@ pub struct RunPlan {
     target_hash: String,
     _target_lock: File,
     inventory: Inventory,
+    verifiers: BTreeMap<String, crate::verification::Prepared>,
 }
 #[derive(Clone)]
 pub struct CaseInputs {
@@ -293,6 +294,9 @@ impl CaseInputs {
     }
 }
 impl RunPlan {
+    pub(crate) fn verifier(&self, id: &str) -> &crate::verification::Prepared {
+        &self.verifiers[id]
+    }
     pub(crate) fn inventory(&self) -> &Inventory {
         &self.inventory
     }
@@ -398,6 +402,7 @@ fn prepare_target(
     let base = suite_file.parent().ok_or("Suite has no parent")?;
     let executable = source(base, &suite.program, false)?;
     let inventory = validate_inputs(base, &suite)?;
+    let verifiers = crate::verification::prepare(base, &suite.verifiers)?;
     let mut hash = Sha256::new();
     // Typed canonical serialization makes comments/whitespace immaterial.
     if program.is_some() {
@@ -527,6 +532,7 @@ fn prepare_target(
         target_hash: format!("{:x}", target_hash.finalize()),
         _target_lock: target,
         inventory,
+        verifiers,
     })
 }
 fn capture_environment(case: &crate::schema::Case) -> Result<BTreeMap<String, String>, String> {

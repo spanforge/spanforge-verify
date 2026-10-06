@@ -15,8 +15,12 @@ extend adapters and oracles to other AI applications.
 
 The existing CLI runner supplies immutable inputs, process lifecycle management,
 assertions, comparison, bundles, HTTP fixtures, scenarios, matrices and repeated
-attempts. It does not yet supply agent tool interception, independent verifier
-execution, model dependency recording, model judges or an enforceable security
+attempts. It now supplies bounded JSON and JSONL agent task/final-response protocols and
+hash-pinned post-run executable outcome checks for cooperative targets, with
+structured claim-to-check findings, plus bounded reviewed evaluator controls and
+oracle health reports. JSONL envelopes retain explicit self-reported event provenance;
+they do not establish independently observed actions. It does not yet supply agent tool interception,
+automated mutation generation, model dependency recording, model judges or an enforceable security
 sandbox. Windows execution is validated; Linux runtime/container acceptance is
 still pending.
 

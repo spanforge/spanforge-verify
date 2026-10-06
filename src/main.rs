@@ -12,6 +12,13 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
+    /// Qualify reviewed verifier controls without launching the evaluated target.
+    Qualify {
+        #[arg(long, default_value = "spanforge-verify.toml")]
+        file: PathBuf,
+        #[arg(long)]
+        verifier: Option<String>,
+    },
     /// Summarize every repeated attempt, including failures and output variability.
     Repeatability {
         #[arg(long)]
@@ -118,8 +125,10 @@ fn main() -> ExitCode {
         .command;
     // Only implicit file defaults migrate. Explicit --file is always respected.
     let default_file = matches.subcommand().is_some_and(|(name, args)| {
-        matches!(name, "bundle" | "compare" | "coverage" | "validate" | "run")
-            && args.value_source("file") == Some(ValueSource::DefaultValue)
+        matches!(
+            name,
+            "bundle" | "compare" | "coverage" | "validate" | "run" | "qualify"
+        ) && args.value_source("file") == Some(ValueSource::DefaultValue)
     });
     if default_file
         && !std::path::Path::new("spanforge-verify.toml").exists()
@@ -129,6 +138,7 @@ fn main() -> ExitCode {
             Commands::Bundle { file, .. }
             | Commands::Compare { file, .. }
             | Commands::Coverage { file, .. }
+            | Commands::Qualify { file, .. }
             | Commands::Validate { file }
             | Commands::Run { file, .. } => *file = "cliverifyr.toml".into(),
             _ => unreachable!(),
@@ -188,7 +198,10 @@ fn main() -> ExitCode {
     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     if matches!(
         &command,
-        Commands::Run { .. } | Commands::Compare { .. } | Commands::Replay { .. }
+        Commands::Run { .. }
+            | Commands::Compare { .. }
+            | Commands::Replay { .. }
+            | Commands::Qualify { .. }
     ) {
         let flag = cancelled.clone();
         let handler: Result<(), String> = (|| {
@@ -210,6 +223,7 @@ fn main() -> ExitCode {
     let file = match &command {
         Commands::Init { file, .. }
         | Commands::Coverage { file, .. }
+        | Commands::Qualify { file, .. }
         | Commands::Validate { file }
         | Commands::Run { file, .. }
         | Commands::Compare { file, .. }
@@ -228,6 +242,13 @@ fn main() -> ExitCode {
         }
     };
     let result = match command {
+        Commands::Qualify { file, verifier } => (|| {
+            let report = spanforge_verify::verification::health_report(&file, verifier.as_deref(), cancelled, invocation_started)?;
+            let json = serde_json::to_vec_pretty(&report).map_err(|_| (3,"Cannot serialize oracle health report".into()))?;
+            if json.len() > 16*1024*1024 { return Err((3,"Oracle health report exceeds 16 MiB".into())); }
+            std::io::stdout().write_all(&json).and_then(|_| std::io::stdout().write_all(b"\n")).map_err(|_| (3,"Cannot write oracle health report".into()))?;
+            if report.exit_code == 0 { Ok(()) } else { Err((report.exit_code,format!("Oracle qualification finished: {}",report.status))) }
+        })(),
         Commands::Doctor {bundle,program} => (|| {
             let mut report = spanforge_verify::reproduction::doctor(&bundle,&program);
             for check in &mut report.checks {

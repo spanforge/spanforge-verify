@@ -8,6 +8,119 @@ use std::{
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
+        Some("agent-task") => {
+            let mut bytes = Vec::new();
+            io::stdin().read_to_end(&mut bytes).unwrap();
+            let request: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            match args[1].as_str() {
+                "good" => std::fs::write("answer.txt", b"correct").unwrap(),
+                "alternate" => std::fs::write("answer.txt", b"alternate").unwrap(),
+                "wrong" => std::fs::write("answer.txt", b"wrong").unwrap(),
+                "tamper" => {
+                    let _ = std::fs::write(&args[2], b"wrong");
+                }
+                _ => (),
+            }
+            let mut reply = serde_json::json!({"schema_version":1,"run_id":request["run_id"],"attempt_id":request["attempt_id"],"response":"Task complete; tests passed","claims":["completed"]});
+            if args[1] == "forge" {
+                reply["run_id"] = "forged".into();
+            }
+            if request["protocol"] == "jsonl" {
+                let started = serde_json::json!({"schema_version":1,"run_id":request["run_id"],"attempt_id":request["attempt_id"],"sequence":0,"event_id":"start","kind":"started"});
+                let mut tool = serde_json::json!({"schema_version":1,"run_id":request["run_id"],"attempt_id":request["attempt_id"],"sequence":1,"event_id":"tool-call","kind":"tool","name":"write_file","summary":args.get(2).cloned().unwrap_or_else(|| "Reported write attempt".into())});
+                let mut final_event = reply;
+                final_event["sequence"] = 2.into();
+                final_event["event_id"] = "finish".into();
+                final_event["kind"] = "final".into();
+                match args[1].as_str() {
+                    "event-gap" => tool["sequence"] = 3.into(),
+                    "event-duplicate" => tool["event_id"] = "start".into(),
+                    "event-spoof" => tool["source"] = "gateway_observed".into(),
+                    _ => (),
+                }
+                println!("{started}");
+                io::stdout().flush().unwrap();
+                if args[1] == "event-cancel" {
+                    std::fs::write(&args[2], b"ready").unwrap();
+                    thread::sleep(Duration::from_secs(60));
+                }
+                if args[1] == "event-timeout" {
+                    thread::sleep(Duration::from_secs(60));
+                }
+                println!("{tool}");
+                if args[1] == "event-no-final" {
+                    return;
+                }
+                println!("{final_event}");
+                if args[1] == "event-after-final" {
+                    println!("{tool}");
+                }
+            } else {
+                println!("{reply}");
+            }
+        }
+        Some("verify-task") => {
+            let mut bytes = Vec::new();
+            io::stdin().read_to_end(&mut bytes).unwrap();
+            let request: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            let root = std::path::Path::new(request["workspace"].as_str().unwrap());
+            if args[1] == "count-check" {
+                let count = std::fs::read_to_string(&args[3])
+                    .ok()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(0);
+                std::fs::write(&args[3], (count + 1).to_string()).unwrap();
+            }
+            match args[1].as_str() {
+                "crash" => process::exit(37),
+                "malformed" => {
+                    print!(
+                        "{{\"schema_version\":1,\"status\":\"PASS\",\"status\":\"FAIL\",\"summary\":\"bad\"}}"
+                    );
+                    return;
+                }
+                "timeout" => thread::sleep(Duration::from_secs(60)),
+                "mutate" => {
+                    std::fs::write(root.join("answer.txt"), b"changed-by-verifier").unwrap()
+                }
+                "overflow" => {
+                    print!("{}", "x".repeat(65536));
+                    return;
+                }
+                _ => (),
+            }
+            let accepted = std::fs::read_to_string(&args[2]).unwrap();
+            let answer = std::fs::read_to_string(root.join("answer.txt")).unwrap_or_default();
+            let status = if args[1] == "always-pass" {
+                "PASS"
+            } else if args[1] == "always-fail" {
+                "FAIL"
+            } else if args[1] == "flaky" {
+                let count = std::fs::read_to_string(&args[3])
+                    .ok()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(0);
+                std::fs::write(&args[3], (count + 1).to_string()).unwrap();
+                if count.is_multiple_of(2) {
+                    "PASS"
+                } else {
+                    "FAIL"
+                }
+            } else if args[1] == "unknown" {
+                "INCONCLUSIVE"
+            } else if accepted.lines().any(|s| s == answer) {
+                "PASS"
+            } else {
+                "FAIL"
+            };
+            let summary = args.get(3).cloned().unwrap_or_else(|| {
+                "Checked persisted answer against pinned expected alternatives".into()
+            });
+            println!(
+                "{}",
+                serde_json::json!({"schema_version":1,"status":status,"summary":summary})
+            );
+        }
         Some("http-get" | "http-url") => {
             use std::net::TcpStream;
             let url = if args[0] == "http-url" {

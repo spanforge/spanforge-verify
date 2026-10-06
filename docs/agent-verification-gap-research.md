@@ -3,7 +3,11 @@
 Research reviewed 6 October 2026. This is a primary-source documentation review,
 not an exhaustive market benchmark. Problems below are documented; demand for
 our particular solution and differentiation remain hypotheses to validate.
-New AI capabilities described here are planned, not implemented.
+The broader capabilities described here remain planned. Initial development now
+includes cooperative JSON agent tasks, pinned post-run outcome checks and
+structured claim findings, JSONL self-reported event envelopes, reviewed evaluator
+controls and oracle health reports;
+see the README for their supported scope and limits.
 
 ## What the evidence supports
 

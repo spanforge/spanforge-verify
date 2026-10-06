@@ -24,7 +24,12 @@ fn max_cases() -> usize {
 pub struct Suite {
     pub schema_version: u32,
     pub suite_id: String,
+    #[serde(default)]
     pub program: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<Target>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verifiers: Vec<crate::verification::Verifier>,
     #[serde(default)]
     pub defaults: Defaults,
     #[serde(default)]
@@ -34,6 +39,25 @@ pub struct Suite {
     pub cases: Vec<Case>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub contracts: Vec<Contract>,
+}
+/// Explicit process adapters. Other adapters are rejected until implemented.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Target {
+    pub schema_version: u32,
+    #[serde(flatten)]
+    pub adapter: TargetAdapter,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TargetAdapter {
+    Native {
+        executable: String,
+    },
+    Interpreter {
+        executable: String,
+        argv: Vec<String>,
+    },
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -81,6 +105,10 @@ pub struct Case {
     pub id: String,
     pub args: Vec<String>,
     pub expect: Expect,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verify: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<crate::agent::Task>,
     pub fixture_dir: Option<String>,
     pub cwd: Option<String>,
     pub stdin_text: Option<String>,
@@ -448,6 +476,33 @@ pub(crate) fn validate_with_program(
     require(text.len() as u64 <= MIB, "Suite exceeds 1 MiB")?;
     let mut suite: Suite =
         toml::from_str(&text).map_err(|e| format!("Invalid suite: {}", e.message()))?;
+    let mut prefix = Vec::new();
+    if let Some(target) = suite.target.take() {
+        require(
+            suite.program.is_empty(),
+            "Declare either program or target, not both",
+        )?;
+        require(
+            target.schema_version == 1,
+            "Unsupported target schema version",
+        )?;
+        match target.adapter {
+            TargetAdapter::Native { executable } => suite.program = executable,
+            TargetAdapter::Interpreter { executable, argv } => {
+                require(
+                    !argv.is_empty(),
+                    "Interpreter target requires explicit argv",
+                )?;
+                require(
+                    argv.len() <= 256 && argv.iter().all(|arg| !arg.contains('\0')),
+                    "Invalid interpreter argv",
+                )?;
+                suite.program = executable;
+                prefix = argv;
+            }
+        }
+    }
+    require(!suite.program.is_empty(), "Missing program or target")?;
     if let Some(program) = program {
         suite.program = crate::inputs::path_text(program)?;
     }
@@ -464,11 +519,25 @@ pub(crate) fn validate_with_program(
         "Invalid run limits",
     )?;
     crate::workflow::expand(&mut suite)?;
+    // Lower only after matrix expansion so row argument overrides retain the
+    // adapter prefix. Scenarios launch their steps, not the parent case.
+    if !prefix.is_empty() {
+        for case in &mut suite.cases {
+            if case.steps.is_empty() {
+                case.args.splice(0..0, prefix.clone());
+            } else {
+                for step in &mut case.steps {
+                    step.args.splice(0..0, prefix.clone());
+                }
+            }
+        }
+    }
     require(
         !suite.cases.is_empty() && suite.cases.len() <= suite.limits.max_cases,
         "Invalid case count",
     )?;
     let base = file.parent().ok_or("Suite has no parent")?;
+    crate::verification::validate(base, &suite)?;
     let executable = source(base, &suite.program, false)?;
     #[cfg(windows)]
     require(
@@ -561,6 +630,7 @@ pub(crate) fn validate_with_program(
         "Expanded workflow exceeds 1000 commands",
     )?;
     for case in &validation_cases {
+        crate::agent::validate(case)?;
         require(
             case.args.iter().all(|v| !v.contains('\0')),
             "NUL in arguments",

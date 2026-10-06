@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod assertions;
 pub mod compare_run;
 pub mod comparison;
@@ -20,5 +21,6 @@ pub mod runner;
 pub mod schema;
 pub mod semantic_diff;
 pub mod strict_json;
+pub mod verification;
 pub mod workflow;
 pub mod workspace;
